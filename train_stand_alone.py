@@ -5,7 +5,7 @@ from sklearn import metrics
 import argparse
 import os
 
-parser = argparse.ArgumentParser(description='Bert Chinese Text Classification')
+parser = argparse.ArgumentParser(description='Tensorflow2.0 ResNet Classification ImageNet')
 parser.add_argument('--epochs', type=int, default=10)
 parser.add_argument('--batch-size', type=int, default=32)
 parser.add_argument('--learning-rate', type=float, default=0.001)
