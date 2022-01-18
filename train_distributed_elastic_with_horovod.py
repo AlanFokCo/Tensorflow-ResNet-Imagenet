@@ -15,6 +15,22 @@ parser.add_argument('--test-dir', default=os.path.expanduser('~/imagenet/validat
 
 args = parser.parse_args()
 
+
+class Metric(object):
+    def __init__(self, name):
+        self.name = name
+        self.sum = tf.Variable(0.)
+        self.n = tf.Variable(0.)
+
+    def update(self, val):
+        self.sum += hvd.allreduce(tf.Variable(val), name=self.name)
+        self.n += 1
+
+    @property
+    def avg(self):
+        return self.sum / self.n
+
+
 epochs = args.epochs
 batch_size = args.batch_size
 learning_rate = args.learning_rate
@@ -44,7 +60,11 @@ optimizer = tf.optimizers.SGD(learning_rate=learning_rate * hvd.size())
 loss = tf.losses.SparseCategoricalCrossentropy()
 
 
+@tf.function
 def evaluate_fn(test_model, test_batch_size):
+    val_loss = Metric('val_loss')
+    val_accuracy = Metric('val_accuracy')
+
     test_loss = tf.keras.metrics.Mean(name='test_loss')
     test_accuracy = 0
     test_count = 0
@@ -69,7 +89,10 @@ def evaluate_fn(test_model, test_batch_size):
         test_loss(test_loss_value)
         test_accuracy += metrics.accuracy_score(tf.cast(test_label, dtype=tf.int32), test_predictions)
 
-    return (test_accuracy / test_count) * 100, test_loss.result()
+    val_loss.update(test_loss.result())
+    val_accuracy.update((test_accuracy / test_count) * 100)
+
+    return val_accuracy.avg.item(), val_loss.avg.item()
 
 
 @tf.function
@@ -100,8 +123,10 @@ training_step(first_data, train_labels[0], allreduce=False)
 
 @hvd.elastic.run
 def train(state):
-
     for epoch in range(0, epochs):
+        train_acc_metrics = Metric('train_accuracy')
+        train_loss_metrics = Metric('train_loss')
+
         train_loss = tf.keras.metrics.Mean(name='train_loss')
         train_accuracy = 0
         train_count = 0
@@ -116,15 +141,18 @@ def train(state):
             train_loss(loss_value)
             train_accuracy += acc_value
 
+        train_acc_metrics.update((train_accuracy / train_count) * 100)
+        train_loss_metrics.update(train_loss.result())
         test_accuracy, test_loss = evaluate_fn(model, 32)
 
-        print(
-            f'Epoch {epoch + 1}, '
-            f'Loss: {train_loss.result()}, '
-            f'Accuracy: {(train_accuracy / train_count) * 100}, '
-            f'Test Loss: {test_loss}, '
-            f'Test Accuracy: {test_accuracy}, '
-        )
+        if hvd.rank() == 0:
+            print(
+                f'Epoch {epoch + 1} '
+                f'Loss: {train_loss.result()} '
+                f'Accuracy: {(train_accuracy / train_count) * 100} '
+                f'Test Loss: {test_loss} '
+                f'Test Accuracy: {test_accuracy} '
+            )
 
         state.commit()
 
