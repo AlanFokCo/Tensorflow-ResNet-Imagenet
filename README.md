@@ -2,7 +2,7 @@
 
 Single-machine and Horovod elastic distributed training of ImageNet using ResNet of Tensorflow 2.0.
 
-Dataset Download Link:
+Dataset Download Reference:https://zhuanlan.zhihu.com/p/378991398
 
 Run Demo of Single-machine by:
 
