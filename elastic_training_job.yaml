@@ -1,0 +1,46 @@
+apiVersion: kai.alibabacloud.com/v1alpha1
+kind: TrainingJob
+metadata:
+  name: resnet-imagenet-elastic-lab
+  namespace: default
+spec:
+  cleanPodPolicy: Running
+  etReplicaSpecs:
+    launcher:
+      replicas: 1
+      template:
+        spec:
+          containers:
+          - name: resnet-imagenet-elastic
+            command:
+            - sh
+            - -c
+            - horovodrun --log-level DEBUG --verbose -np 4 --min-np 1 --max-np 128
+              --host-discovery-script /etc/edl/discover_hosts.sh python examples/elastic/tensorflow2/train_distributed_elastic_with_horovod.py
+              --train-dir=/dataset/ILSVRC2012_img_train/ --val-dir=/dataset/ILSVRC2012_img_val/
+            image: xxx
+            imagePullPolicy: IfNotPresent
+    worker:
+      maxReplicas: 128
+      minReplicas: 1
+      replicas: 4
+      template:
+        spec:
+          containers:
+          - image: xxx
+            imagePullPolicy: Always
+            name: resnet-imagenet-elastic
+            resources:
+              limits:
+                nvidia.com/gpu: "1"
+              requests:
+                nvidia.com/gpu: "1"
+            volumeMounts:
+            - mountPath: /dataset/
+              name: imagenet-dataset
+            volumes:
+            - name: imagenet-dataset
+              persistentVolumeClaim:
+                claimName: imagenet-ilsvrc2012-pvc
+          imagePullSecrets:
+          - name: regcred
